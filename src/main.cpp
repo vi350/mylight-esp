@@ -2,8 +2,8 @@
 
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
-#include <ESP8266httpUpdate.h>
-#include <ESP8266httpclient.h>
+#include <ESP8266HTTPUpdateServer.h>
+#include <ESP8266HTTPClient.h>
 
 #include <GyverEncoder.h>
 #include "GyverButton.h"
@@ -29,7 +29,6 @@ const unsigned int CRTgammaPGM[101] PROGMEM = {
 #define ssid "yourssid"
 #define password "yourpass"
 #define sn "1" // serial number, по задумке — уникальный номер устройства в локальной сети
-#define myservurl "anyurl"
 
 // переменные
 const byte led = 15;
@@ -47,6 +46,7 @@ GButton butt1(5);
 Encoder enc1(13, 12, ENC_NO_BUTTON, TYPE1);
 TM74HC595Display disp(14, 2, 4);
 ESP8266WebServer server(80);
+ESP8266HTTPUpdateServer httpUpdater;
 WiFiClient wificlient;
 HTTPClient http;
 
@@ -67,16 +67,12 @@ void send_changed_brightness() { // если яркость изменилась
   if (setted_by_enc & millis() - send_brightness_timer > 200 & setted_brightness != last_setted_brightness) {
     send_brightness_timer = millis();
     last_setted_brightness = setted_brightness;
-    http.begin(wificlient, "http://" + (String)myservurl + "/tl_set_brightness/");
-    http.GET();
+    // отсылка на сервер
   }
 }
 void toggle_via_goal() { // через state определяем к чему стремится яркость — к установленному значению или к 0
-  if (state) {
-    goal_brightness = setted_brightness;
-  } else {
-    goal_brightness = 0;
-  }
+  if (state) goal_brightness = setted_brightness;
+  else goal_brightness = 0;
 }
 void enc_logic() { // обработка движений энкодера и нажатий кнопки
   if (butt1.isHolded()) { // изменение режима через удержание кнопки
@@ -88,13 +84,7 @@ void enc_logic() { // обработка движений энкодера и н
     switch (mode) {
       case 0: // по нажатию меняем state и извещаем сервер об изменении
         state = !state;
-        if (state) {
-          http.begin(wificlient, "http://" + (String)myservurl + "/tl_set_on");
-          http.GET();
-        } else {
-          http.begin(wificlient, "http://" + (String)myservurl + "/tl_set_off");
-          http.GET();
-        }
+        // отсылка на сервер
         http.end();
         break;
     }
@@ -181,13 +171,6 @@ String set_brightness() {
   }
   return String(setted_brightness);
 }
-void update_firmware() { // при получении команды на обновление идем на сервер за бинарником
-  // порядок действий примитивен и нуждается в доработке
-  digitalWrite(led, 0);
-  state = false;
-  ESPhttpUpdate.update(wificlient, myservurl, 80, "/firmwares/" + (String)sn + ".bin");
-  ESP.restart();
-}
 
 void setup() {
   pinMode(led, OUTPUT);
@@ -201,6 +184,15 @@ void setup() {
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
+
+  if (digitalRead(5) == HIGH) {
+    delay(1000);
+    if (digitalRead(5) == HIGH){
+      httpUpdater.setup(&server);
+      server.begin();
+      while (true) server.handleClient();
+    }
+  }
 
   server.begin();
 
@@ -228,10 +220,6 @@ void setup() {
   });
   server.on("/sn", [](){
       server.send(200, "text/plain", sn);
-  });
-  server.on("/update_firmware", [](){
-      server.send(200, "text/plain");
-      update_firmware();
   });
   server.onNotFound([](){
       server.send(404, "text/plain", "Not Found");
