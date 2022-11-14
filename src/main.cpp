@@ -54,17 +54,14 @@ unsigned int getBrightCRT(byte val) { // применения гамма кор�
   return pgm_read_word(&(CRTgammaPGM[val]));
 }
 void change_brightness() { // плавно стремимся к целевой яркости
-  if (goal_brightness != brightness & millis() - change_brightness_timer > 20) {
+  if ((goal_brightness != brightness) & (millis() - change_brightness_timer > 20)) {
     change_brightness_timer = millis();
-    if (goal_brightness > brightness) {
-      brightness += 1;
-    } else {
-      brightness -= 1;
-    }
+    if (goal_brightness > brightness) brightness += 1;
+    else brightness -= 1;
   }
 }
 void send_changed_brightness() { // если яркость изменилась через энкодер, отослать значение на сервер
-  if (setted_by_enc & millis() - send_brightness_timer > 200 & setted_brightness != last_setted_brightness) {
+  if ((setted_by_enc) & (millis() - send_brightness_timer > 200) & (setted_brightness != last_setted_brightness)) {
     send_brightness_timer = millis();
     last_setted_brightness = setted_brightness;
     // отсылка на сервер
@@ -124,7 +121,7 @@ void enc_logic() { // обработка движений энкодера и н
       case 0: // быстрый поворот вправо -> изменение на +5 за одно значение поворота
         if (setted_brightness < 100) {
           setted_brightness += 5;
-          setted_brightness = min((int)setted_brightness, 100);
+          if (setted_brightness > 100) setted_brightness = 100;
           setted_by_enc = true;
           disp.clear();
           disp.digit4(setted_brightness);
@@ -136,7 +133,7 @@ void enc_logic() { // обработка движений энкодера и н
       case 0: // быстрый поворот влево -> изменение на -5 за одно значение поворота
         if (setted_brightness > 0) {
           setted_brightness -= 5;
-          setted_brightness = max((int)setted_brightness, 0);
+          if (setted_brightness > 100) setted_brightness = 0;
           setted_by_enc = true;
           disp.clear();
           disp.digit4(setted_brightness);
@@ -165,7 +162,7 @@ String status() {
 String set_brightness() {
   if (server.arg("brightness") != "") {
     int br = server.arg("brightness").toInt(); // временная переменная для приведения полученных данных к интервалу 0..100
-    constrain(br, 0, 100);
+    br = constrain(br, 0, 100);
     setted_brightness = (byte)br;
     setted_by_enc = false;
   }
@@ -185,14 +182,7 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
-  if (digitalRead(5) == HIGH) {
-    delay(1000);
-    if (digitalRead(5) == HIGH){
-      httpUpdater.setup(&server);
-      server.begin();
-      while (true) server.handleClient();
-    }
-  }
+  httpUpdater.setup(&server);
 
   server.begin();
 
